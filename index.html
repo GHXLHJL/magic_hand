@@ -300,8 +300,15 @@
                 const middleMCP = landmarks[9];
                 
                 // 转换 MediaPipe 坐标 (0-1) 到 Three.js 世界坐标 (approx -50 to 50)
-                const targetX = (0.5 - wrist.x) * 150; // 反转X轴因为镜像
-                const targetY = (0.5 - wrist.y) * 100;
+                // 修正：移除镜像反转，直接映射到屏幕坐标系
+                // MediaPipe: x(0左-1右), y(0上-1下)
+                // ThreeJS: x(-W/2左 - W/2右), y(H/2上 - -H/2下)
+                const screenW = window.innerWidth / 8; // 调整映射比例
+                const screenH = window.innerHeight / 8;
+                
+                const targetX = -(wrist.x - 0.5) * 300; // 反向映射X轴以匹配镜像画面
+                const targetY = -(wrist.y - 0.5) * 200; // 反向映射Y轴
+                
                 // 深度估算: 手越大越近。利用 0 和 9 的距离
                 const handSize = Math.sqrt(Math.pow(wrist.x - middleMCP.x, 2) + Math.pow(wrist.y - middleMCP.y, 2));
                 const targetZ = (handSize - 0.1) * 200; 
