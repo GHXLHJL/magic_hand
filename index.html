@@ -85,11 +85,11 @@
             camZ: 100,
             textString: "我是 Mok",
             physics: {
-                friction: 0.96,      // 摩擦力
-                ease: 0.02,          // 牵引力平滑度 (越小越慢)
-                explosionForce: 3.0, // 切换爆炸力度
+                friction: 0.94,      // 摩擦力 (越小阻力越大，停得越快)
+                ease: 0.008,         // 牵引力平滑度 (极低值 = 极慢的漂浮感)
+                explosionForce: 1.5, // 切换爆炸力度 (减弱爆炸，避免太乱)
                 stormThreshold: 30,  // 挥手风暴触发速度阈值
-                stormForce: 2.0      // 风暴吹散力度
+                stormForce: 1.0      // 风暴吹散力度 (减弱风力)
             }
         };
 
