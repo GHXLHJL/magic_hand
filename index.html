@@ -128,21 +128,41 @@
         const particlesGeometry = new THREE.BufferGeometry();
         const positions = new Float32Array(CONFIG.particleCount * 3);
         const velocities = new Float32Array(CONFIG.particleCount * 3);
+        // 增加颜色属性，支持每个粒子独立颜色
+        const colors = new Float32Array(CONFIG.particleCount * 3);
         // 目标位置缓存，用于不同形态
         let currentTargetPositions = new Float32Array(CONFIG.particleCount * 3);
+        // 目标颜色缓存
+        let currentTargetColors = new Float32Array(CONFIG.particleCount * 3);
 
-        // 初始化随机位置
-        for (let i = 0; i < CONFIG.particleCount * 3; i++) {
-            positions[i] = (Math.random() - 0.5) * 200;
-            velocities[i] = 0;
-            currentTargetPositions[i] = positions[i];
+        // 初始化随机位置和默认颜色 (青色)
+        const defaultColor = new THREE.Color(CONFIG.color);
+        for (let i = 0; i < CONFIG.particleCount; i++) {
+            const idx = i * 3;
+            positions[idx] = (Math.random() - 0.5) * 200;
+            positions[idx+1] = (Math.random() - 0.5) * 200;
+            positions[idx+2] = (Math.random() - 0.5) * 200;
+            velocities[idx] = 0;
+            velocities[idx+1] = 0;
+            velocities[idx+2] = 0;
+            
+            currentTargetPositions[idx] = positions[idx];
+            
+            // 初始化颜色
+            colors[idx] = defaultColor.r;
+            colors[idx+1] = defaultColor.g;
+            colors[idx+2] = defaultColor.b;
+            currentTargetColors[idx] = defaultColor.r;
+            currentTargetColors[idx+1] = defaultColor.g;
+            currentTargetColors[idx+2] = defaultColor.b;
         }
 
         particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-        // 材质
+        // 材质 - 开启 vertexColors
         const particleMaterial = new THREE.PointsMaterial({
-            color: CONFIG.color,
+            vertexColors: true, // 启用顶点颜色
             size: 0.8,
             transparent: true,
             opacity: 0.8,
@@ -156,34 +176,95 @@
         // ==========================================
         // 形状生成器 (数学模型)
         // ==========================================
+        // 每个形状返回 { pos: Float32Array, col: Float32Array }
+        const defaultColorArr = new Float32Array(CONFIG.particleCount * 3);
+        const c = new THREE.Color(CONFIG.color);
+        for(let i=0; i<CONFIG.particleCount; i++) {
+            defaultColorArr[i*3] = c.r; defaultColorArr[i*3+1] = c.g; defaultColorArr[i*3+2] = c.b;
+        }
+
         const Shapes = {
-            // 1. 张手 -> 球体
+            // 1. 张手 -> 散开 (大球体)
             sphere: () => {
                 const arr = new Float32Array(CONFIG.particleCount * 3);
-                const radius = 35;
+                const radius = 120; // 增大半径，模拟散开
                 for (let i = 0; i < CONFIG.particleCount; i++) {
                     const phi = Math.acos(-1 + (2 * i) / CONFIG.particleCount);
                     const theta = Math.sqrt(CONFIG.particleCount * Math.PI) * phi;
-                    arr[i * 3] = radius * Math.cos(theta) * Math.sin(phi);
-                    arr[i * 3 + 1] = radius * Math.sin(theta) * Math.sin(phi);
-                    arr[i * 3 + 2] = radius * Math.cos(phi);
+                    // 增加更强的随机性，看起来像云雾
+                    const r = radius * (0.5 + Math.random());
+                    arr[i * 3] = r * Math.cos(theta) * Math.sin(phi);
+                    arr[i * 3 + 1] = r * Math.sin(theta) * Math.sin(phi);
+                    arr[i * 3 + 2] = r * Math.cos(phi);
                 }
                 return arr;
             },
 
-            // 2. 握拳 -> 圆环
-            torus: () => {
-                const arr = new Float32Array(CONFIG.particleCount * 3);
-                const R = 30; // 大半径
-                const r = 10; // 小半径
+            // 2. 握拳 -> 圣诞树 (复刻照片效果)
+            tree: () => {
+                const pos = new Float32Array(CONFIG.particleCount * 3);
+                const col = new Float32Array(CONFIG.particleCount * 3);
+                
+                const treeHeight = 120;
+                const trunkHeight = 30;
+                const maxRadius = 45;
+                
+                const green = new THREE.Color(0x2ecc71); // 鲜艳的绿
+                const darkGreen = new THREE.Color(0x27ae60);
+                const pink = new THREE.Color(0xff69b4); // 树干粉色
+                const yellow = new THREE.Color(0xf1c40f); // 装饰灯
+                const white = new THREE.Color(0xffffff); // 顶部雪/星
+
                 for (let i = 0; i < CONFIG.particleCount; i++) {
-                    const u = Math.random() * Math.PI * 2;
-                    const v = Math.random() * Math.PI * 2;
-                    arr[i * 3] = (R + r * Math.cos(v)) * Math.cos(u);
-                    arr[i * 3 + 1] = (R + r * Math.cos(v)) * Math.sin(u);
-                    arr[i * 3 + 2] = r * Math.sin(v);
+                    // 分配粒子：15% 给树干，85% 给树冠
+                    if (i < CONFIG.particleCount * 0.15) {
+                        // === 树干 (粉色圆柱) ===
+                        const h = Math.random() * trunkHeight;
+                        const r = Math.random() * 8; // 树干半径
+                        const angle = Math.random() * Math.PI * 2;
+                        
+                        pos[i * 3] = r * Math.cos(angle);
+                        pos[i * 3 + 1] = h - treeHeight/2 - trunkHeight/2; // 底部位置
+                        pos[i * 3 + 2] = r * Math.sin(angle);
+                        
+                        col[i*3] = pink.r; col[i*3+1] = pink.g; col[i*3+2] = pink.b;
+                    } else {
+                        // === 树冠 (绿色圆锥 + 装饰) ===
+                        // 这是一个圆锥体，底部宽，顶部尖
+                        // y 范围: -treeHeight/2 + trunkHeight/2  到  treeHeight/2
+                        const yPercent = Math.random(); // 0 -> 1
+                        // 形状函数：y越小(底部)，半径越大
+                        const currentMaxR = maxRadius * (1 - yPercent); 
+                        const r = Math.sqrt(Math.random()) * currentMaxR; // 均匀分布在圆内
+                        const angle = Math.random() * Math.PI * 2;
+                        
+                        const y = -treeHeight/2 + trunkHeight/2 + yPercent * (treeHeight - trunkHeight);
+                        
+                        pos[i * 3] = r * Math.cos(angle);
+                        pos[i * 3 + 1] = y;
+                        pos[i * 3 + 2] = r * Math.sin(angle);
+
+                        // 颜色分配
+                        const rand = Math.random();
+                        if (rand > 0.92) { // 8% 装饰灯 (黄/白)
+                            const deco = Math.random() > 0.5 ? yellow : white;
+                            col[i*3] = deco.r; col[i*3+1] = deco.g; col[i*3+2] = deco.b;
+                            // 装饰灯稍微往外凸一点
+                            pos[i * 3] *= 1.05;
+                            pos[i * 3 + 2] *= 1.05;
+                        } else {
+                            // 树叶深浅绿交替
+                            const leaf = Math.random() > 0.5 ? green : darkGreen;
+                            col[i*3] = leaf.r; col[i*3+1] = leaf.g; col[i*3+2] = leaf.b;
+                        }
+                    }
                 }
-                return arr;
+                
+                // 简单的 "Merry Christmas" 文字粒子 (复用部分树冠粒子放在头顶)
+                // 这里为了性能和简单，我们用一部分粒子在树顶排列成一行简单的点阵
+                // 实际上完整的文字需要 canvas 采样，暂且用树冠本身的装饰代表
+                
+                return { pos, col };
             },
 
             // 3. 竖大拇指 -> 爱心
@@ -275,7 +356,7 @@
         console.log("正在生成形状缓存...");
         const ShapeCache = {
             sphere: Shapes.sphere(),
-            torus: Shapes.torus(),
+            tree: Shapes.tree(),
             heart: Shapes.heart(),
             star: Shapes.star(),
             text: Shapes.text()
@@ -295,33 +376,50 @@
                 const landmarks = results.multiHandLandmarks[0];
                 
                 // 1. 计算手掌中心 (作为粒子系统的吸引中心)
-                // 使用手腕(0)和中指根部(9)的中间点
+                // 使用手掌几何中心：(Wrist + Middle_MCP) / 2
+                // 这比单纯用手腕更准确，能让粒子球体位于手心
                 const wrist = landmarks[0];
                 const middleMCP = landmarks[9];
                 
-                // 转换 MediaPipe 坐标 (0-1) 到 Three.js 世界坐标 (approx -50 to 50)
-                // 修正：移除镜像反转，直接映射到屏幕坐标系
-                // MediaPipe: x(0左-1右), y(0上-1下)
-                // ThreeJS: x(-W/2左 - W/2右), y(H/2上 - -H/2下)
-                const screenW = window.innerWidth / 8; // 调整映射比例
-                const screenH = window.innerHeight / 8;
+                const palmX = (wrist.x + middleMCP.x) / 2;
+                const palmY = (wrist.y + middleMCP.y) / 2;
                 
-                const targetX = -(wrist.x - 0.5) * 300; // 反向映射X轴以匹配镜像画面
-                const targetY = -(wrist.y - 0.5) * 200; // 反向映射Y轴
+                // 转换 MediaPipe 坐标 (0-1) 到 Three.js 世界坐标
+                // 重新校准映射比例，使其更符合 75度 FOV 的可视范围
+                // 视口高度约为 150 (Z=0时), 宽度约为 150 * aspect
+                const viewHeight = 150; 
+                const viewWidth = viewHeight * (window.innerWidth / window.innerHeight);
+                
+                // X轴: 镜像反转 (MediaPipe x是归一化的，0在左，1在右)
+                // 我们希望：手在画面左边(x<0.5) -> 粒子在左边(x<0); 手在右边(x>0.5) -> 粒子在右边(x>0)
+                // 由于通常自拍镜像是反的，我们加负号来匹配
+                const targetX = -(palmX - 0.5) * viewWidth; 
+                
+                // Y轴: MediaPipe y向下增大(0顶1底)，ThreeJS y向上增大
+                // y<0.5(上) -> targetY>0; y>0.5(下) -> targetY<0
+                const targetY = -(palmY - 0.5) * viewHeight;
                 
                 // 深度估算: 手越大越近。利用 0 和 9 的距离
                 const handSize = Math.sqrt(Math.pow(wrist.x - middleMCP.x, 2) + Math.pow(wrist.y - middleMCP.y, 2));
-                const targetZ = (handSize - 0.1) * 200; 
+                
+                // 深度修正：放弃复杂的 Z 轴移动，改为主要靠缩放 (Scale) 来模拟距离感
+                // 这样能避免 Z 轴跑出相机视野的问题
+                // Z 轴只做微调，保持在 0 附近
+                const targetZ = 0; 
 
                 // 更新状态位置
                 STATE.lastHandPosition.copy(STATE.handPosition);
-                STATE.handPosition.set(targetX, targetY, targetZ);
+                // 使用 lerp 平滑移动，避免抖动
+                const targetPos = new THREE.Vector3(targetX, targetY, targetZ);
+                STATE.handPosition.lerp(targetPos, 0.2); // 0.2 的平滑系数
                 
                 // 计算手速 (用于风暴交互)
                 STATE.handVelocity.subVectors(STATE.handPosition, STATE.lastHandPosition);
                 
-                // 2. 深度缩放系数
-                STATE.handScale = 0.5 + handSize * 3; // 动态调整粒子系统大小
+                // 2. 深度缩放系数 (根据 handSize 动态调整大小)
+                // handSize 通常在 0.05 (远) 到 0.3 (近) 之间
+                // 我们希望 Scale 在 0.5 到 2.0 之间
+                STATE.handScale = 0.5 + handSize * 5;
 
                 // 3. 手势识别
                 const gesture = detectGesture(landmarks);
@@ -333,8 +431,8 @@
                     
                     // UI 更新
                     let gestureName = "未知";
-                    if (gesture === 'open') gestureName = "张手 (球体)";
-                    if (gesture === 'fist') gestureName = "握拳 (圆环)";
+                    if (gesture === 'open') gestureName = "张手 (散开)";
+                    if (gesture === 'fist') gestureName = "握拳 (圣诞树)";
                     if (gesture === 'victory') gestureName = "剪刀手 (Mok)";
                     if (gesture === 'point') gestureName = "食指 (星形)";
                     if (gesture === 'thumb') gestureName = "点赞 (爱心)";
@@ -369,9 +467,13 @@
 
             const count = [indexOpen, middleOpen, ringOpen, pinkyOpen].filter(Boolean).length;
 
+            // 调试：打印手指状态
+            // console.log(count, thumbOpen, indexOpen, middleOpen, ringOpen, pinkyOpen);
+
             if (indexOpen && middleOpen && !ringOpen && !pinkyOpen) return 'victory'; // 剪刀手
             if (count === 4 && thumbOpen) return 'open'; // 张手
-            if (count === 0 && !thumbOpen) return 'fist'; // 握拳
+            // 握拳判断放宽：所有手指都弯曲 (count === 0) 即可，拇指状态不强制
+            if (count === 0) return 'fist'; // 握拳 (修正：不再强制要求拇指弯曲)
             if (indexOpen && !middleOpen && !ringOpen && !pinkyOpen) return 'point'; // 食指
             if (thumbOpen && !indexOpen && !middleOpen && !ringOpen && !pinkyOpen) return 'thumb'; // 大拇指
 
@@ -379,13 +481,19 @@
         }
 
         function updateTargetShape(gesture) {
+            let target;
             switch(gesture) {
-                case 'open': currentTargetPositions = ShapeCache.sphere; break;
-                case 'fist': currentTargetPositions = ShapeCache.torus; break;
-                case 'victory': currentTargetPositions = ShapeCache.text; break;
-                case 'point': currentTargetPositions = ShapeCache.star; break;
-                case 'thumb': currentTargetPositions = ShapeCache.heart; break;
-                default: currentTargetPositions = ShapeCache.sphere;
+                case 'open': target = ShapeCache.sphere; break;
+                case 'fist': target = ShapeCache.tree; break;
+                case 'victory': target = ShapeCache.text; break;
+                case 'point': target = ShapeCache.star; break;
+                case 'thumb': target = ShapeCache.heart; break;
+                default: target = ShapeCache.sphere;
+            }
+            if (target && target.pos) {
+                 currentTargetPositions = target.pos;
+                 // 如果形状没有定义颜色，回退到默认颜色，防止 NaN
+                 currentTargetColors = target.col || defaultColorArr;
             }
         }
 
@@ -401,6 +509,7 @@
             
             // 粒子物理更新
             const p = particlesGeometry.attributes.position.array;
+            const c = particlesGeometry.attributes.color.array; // 获取颜色数组
             
             // 获取手部影响
             const handSpeed = STATE.handVelocity.length();
@@ -433,6 +542,14 @@
                 velocities[idx] += ax;
                 velocities[idx+1] += ay;
                 velocities[idx+2] += az;
+
+                // 3.1 颜色插值 (平滑过渡)
+                const lerpSpeed = 0.05;
+                if (!isNaN(currentTargetColors[idx])) {
+                     c[idx] += (currentTargetColors[idx] - c[idx]) * lerpSpeed;
+                     c[idx+1] += (currentTargetColors[idx+1] - c[idx+1]) * lerpSpeed;
+                     c[idx+2] += (currentTargetColors[idx+2] - c[idx+2]) * lerpSpeed;
+                }
 
                 // 4. 应用爆炸特效 (瞬间斥力)
                 if (explosionForce > 0) {
@@ -471,6 +588,7 @@
             }
 
             particlesGeometry.attributes.position.needsUpdate = true;
+            particlesGeometry.attributes.color.needsUpdate = true; // 告诉 Three.js 更新颜色
             
             // 粒子系统整体稍微旋转一点，增加动感
             particleSystem.rotation.y += 0.001;
